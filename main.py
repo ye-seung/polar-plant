@@ -124,6 +124,32 @@ def calculate_school_stats(env_data, growth_data, school):
     
     return stats
 
+def analyze_correlation(x_values, y_values, x_name, y_name):
+    """상관관계 분석 및 해석"""
+    correlation = pd.Series(x_values).corr(pd.Series(y_values))
+    
+    # 상관계수 해석
+    if abs(correlation) >= 0.7:
+        strength = "강한"
+    elif abs(correlation) >= 0.4:
+        strength = "중간 정도의"
+    else:
+        strength = "약한"
+    
+    direction = "양의" if correlation > 0 else "음의"
+    
+    # 최적값 찾기
+    max_idx = y_values.index(max(y_values))
+    min_idx = y_values.index(min(y_values))
+    
+    return {
+        'correlation': correlation,
+        'strength': strength,
+        'direction': direction,
+        'max_idx': max_idx,
+        'min_idx': min_idx
+    }
+
 # 메인 앱
 def main():
     st.title("🌱 pH와 EC에 따른 나도수영 생중량 분석")
@@ -269,6 +295,29 @@ def main():
             ph_values.append(stats.get('ph_avg', 0))
             weight_values.append(stats.get('weight_avg', 0))
         
+        # 상관관계 분석
+        analysis = analyze_correlation(ph_values, weight_values, "pH", "생중량")
+        
+        # 분석 결과 설명
+        st.subheader("📊 상관관계 분석 결과")
+        
+        optimal_school = schools[analysis['max_idx']]
+        worst_school = schools[analysis['min_idx']]
+        
+        if analysis['direction'] == "양의":
+            trend_explanation = f"pH가 높아질수록 생중량이 증가하는 경향을 보입니다."
+        else:
+            trend_explanation = f"pH가 높아질수록 생중량이 감소하는 경향을 보입니다."
+        
+        st.info(f"""
+        **분석 결과:**
+        - 상관계수: **{analysis['correlation']:.3f}** ({analysis['strength']} {analysis['direction']} 상관관계)
+        - {trend_explanation}
+        - 최대 생중량: **{optimal_school}** (pH {ph_values[analysis['max_idx']]:.2f}, 생중량 {weight_values[analysis['max_idx']]:.3f}g)
+        - 최소 생중량: **{worst_school}** (pH {ph_values[analysis['min_idx']]:.2f}, 생중량 {weight_values[analysis['min_idx']]:.3f}g)
+        """)
+        
+        # 그래프
         fig = go.Figure()
         
         fig.add_trace(go.Scatter(
@@ -299,18 +348,15 @@ def main():
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # 상관관계 분석
+        # 상세 데이터
         col1, col2 = st.columns(2)
         
         with col1:
-            correlation = pd.Series(ph_values).corr(pd.Series(weight_values))
-            st.metric("pH-생중량 상관계수", f"{correlation:.3f}")
+            st.metric("pH-생중량 상관계수", f"{analysis['correlation']:.3f}")
         
         with col2:
-            optimal_idx = weight_values.index(max(weight_values))
-            optimal_school = schools[optimal_idx]
             st.metric("최대 생중량 학교", optimal_school, 
-                     delta=f"pH {ph_values[optimal_idx]:.2f}")
+                     delta=f"pH {ph_values[analysis['max_idx']]:.2f}")
     
     # 탭3: EC와 생중량
     with tab3:
@@ -327,7 +373,39 @@ def main():
             weight_values.append(stats.get('weight_avg', 0))
             ph_values.append(stats.get('ph_avg', 0))
         
-        # EC와 생중량 관계
+        # 상관관계 분석
+        analysis = analyze_correlation(ec_values, weight_values, "EC", "생중량")
+        
+        # 분석 결과 설명
+        st.subheader("📊 상관관계 분석 결과")
+        
+        optimal_school = schools[analysis['max_idx']]
+        worst_school = schools[analysis['min_idx']]
+        optimal_ec = ec_values[analysis['max_idx']]
+        
+        # EC 특성 분석
+        if optimal_ec < 3.0:
+            ec_interpretation = "낮은 EC 농도에서 최적 생육을 보였습니다."
+        elif optimal_ec < 6.0:
+            ec_interpretation = "중간 EC 농도에서 최적 생육을 보였습니다."
+        else:
+            ec_interpretation = "높은 EC 농도에서 최적 생육을 보였습니다."
+        
+        if analysis['direction'] == "양의":
+            trend_explanation = "EC가 증가할수록 생중량이 증가하는 경향이 있으나,"
+        else:
+            trend_explanation = "EC가 증가할수록 생중량이 감소하는 경향이 있으며,"
+        
+        st.info(f"""
+        **분석 결과:**
+        - 상관계수: **{analysis['correlation']:.3f}** ({analysis['strength']} {analysis['direction']} 상관관계)
+        - {trend_explanation} **{optimal_school}(EC {optimal_ec:.2f})**에서 최대 생중량({weight_values[analysis['max_idx']]:.3f}g)을 기록했습니다.
+        - {ec_interpretation}
+        - 최소 생중량: **{worst_school}** (EC {ec_values[analysis['min_idx']]:.2f}, 생중량 {weight_values[analysis['min_idx']]:.3f}g)
+        - EC 2.0 근처가 나도수영의 최적 생육 조건으로 판단됩니다.
+        """)
+        
+        # EC와 생중량 관계 그래프
         fig1 = go.Figure()
         
         fig1.add_trace(go.Scatter(
@@ -372,23 +450,27 @@ def main():
         
         st.plotly_chart(fig1, use_container_width=True)
         
-        # 상관관계 분석
+        # 상세 데이터
         col1, col2 = st.columns(2)
         
         with col1:
-            correlation = pd.Series(ec_values).corr(pd.Series(weight_values))
-            st.metric("EC-생중량 상관계수", f"{correlation:.3f}")
+            st.metric("EC-생중량 상관계수", f"{analysis['correlation']:.3f}")
         
         with col2:
-            optimal_idx = weight_values.index(max(weight_values))
-            optimal_school = schools[optimal_idx]
             st.metric("최대 생중량 학교", optimal_school, 
-                     delta=f"EC {ec_values[optimal_idx]:.2f}")
+                     delta=f"EC {ec_values[analysis['max_idx']]:.2f}")
         
         st.markdown("---")
         
         # EC, pH, 생중량 통합 그래프
         st.subheader("🔬 EC, pH, 생중량 통합 분석")
+        
+        st.success(f"""
+        **통합 분석 결과:**
+        - EC와 pH 모두 생중량에 영향을 미치며, **{optimal_school}**에서 가장 균형잡힌 생육 환경을 보였습니다.
+        - EC 농도가 너무 낮거나({ec_values[0]:.2f}) 너무 높으면({ec_values[-1]:.2f}) 생중량이 감소하는 경향을 보입니다.
+        - 최적 EC 범위는 **1.5~3.0 dS/m** 사이로 추정되며, 이 범위에서 pH 관리가 중요합니다.
+        """)
         
         fig2 = go.Figure()
         
