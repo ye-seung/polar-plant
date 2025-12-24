@@ -240,7 +240,7 @@ with tab2:
         all_env_sorted = all_env.sort_values("time")
         st.dataframe(all_env_sorted, use_container_width=True)
 
-        csv_buffer = io.BytesIO()
+        data=csv_buffer.getvalue()
         all_env_sorted.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
         csv_buffer.seek(0)
 
