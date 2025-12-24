@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -27,10 +26,15 @@ html, body, [class*="css"] {
 """, unsafe_allow_html=True)
 
 # ===============================
+# ✅ 데이터 폴더 경로 (핵심 수정)
+# main.py 기준 data 폴더
+# ===============================
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+
+# ===============================
 # 상수 정의
 # ===============================
-DATA_DIR = Path("data")
-
 EC_TARGET = {
     "송도고": 1.0,
     "하늘고": 2.0,
@@ -46,17 +50,23 @@ SCHOOL_COLOR = {
 }
 
 # ===============================
-# 유틸: 한글 파일명 안전 탐색
+# 한글 파일명 안전 탐색 (NFC/NFD)
 # ===============================
 def find_file_by_name(directory: Path, target_name: str):
+    if not directory.exists():
+        st.error(f"데이터 폴더를 찾을 수 없다: {directory}")
+        return None
+
     target_nfc = unicodedata.normalize("NFC", target_name)
     target_nfd = unicodedata.normalize("NFD", target_name)
 
     for file in directory.iterdir():
         name_nfc = unicodedata.normalize("NFC", file.name)
         name_nfd = unicodedata.normalize("NFD", file.name)
+
         if name_nfc == target_nfc or name_nfd == target_nfd:
             return file
+
     return None
 
 # ===============================
@@ -69,6 +79,7 @@ def load_environment_data():
     for school in EC_TARGET.keys():
         filename = f"{school}_환경데이터.csv"
         file_path = find_file_by_name(DATA_DIR, filename)
+
         if file_path is None:
             st.error(f"{filename} 파일을 찾을 수 없다.")
             return None
@@ -83,6 +94,7 @@ def load_environment_data():
 @st.cache_data
 def load_growth_data():
     file_path = find_file_by_name(DATA_DIR, "4개교_생육결과데이터.xlsx")
+
     if file_path is None:
         st.error("4개교_생육결과데이터.xlsx 파일을 찾을 수 없다.")
         return None
@@ -139,15 +151,11 @@ with tab1:
 
     summary_rows = []
     total_plants = 0
+
     for school, df in growth_data.items():
         count = len(df)
         total_plants += count
-        summary_rows.append([
-            school,
-            EC_TARGET[school],
-            count,
-            SCHOOL_COLOR[school]
-        ])
+        summary_rows.append([school, EC_TARGET[school], count, SCHOOL_COLOR[school]])
 
     summary_df = pd.DataFrame(
         summary_rows,
@@ -157,180 +165,13 @@ with tab1:
     st.dataframe(summary_df, use_container_width=True)
 
     all_env = pd.concat(env_data.values())
-    avg_temp = all_env["temperature"].mean()
-    avg_hum = all_env["humidity"].mean()
-
     col1, col2, col3, col4 = st.columns(4)
+
     col1.metric("총 개체수", total_plants)
-    col2.metric("평균 온도", f"{avg_temp:.2f} ℃")
-    col3.metric("평균 습도", f"{avg_hum:.2f} %")
+    col2.metric("평균 온도", f"{all_env['temperature'].mean():.2f} ℃")
+    col3.metric("평균 습도", f"{all_env['humidity'].mean():.2f} %")
     col4.metric("최적 EC", "2.0 (하늘고)")
 
 # ======================================================
 # Tab 2: 환경 데이터
-# ======================================================
-with tab2:
-    st.subheader("학교별 환경 평균 비교")
-
-    avg_rows = []
-    for school, df in env_data.items():
-        avg_rows.append([
-            school,
-            df["temperature"].mean(),
-            df["humidity"].mean(),
-            df["ph"].mean(),
-            df["ec"].mean()
-        ])
-
-    avg_df = pd.DataFrame(
-        avg_rows,
-        columns=["학교", "온도", "습도", "pH", "EC"]
-    )
-
-    fig = make_subplots(
-        rows=2, cols=2,
-        subplot_titles=("평균 온도", "평균 습도", "평균 pH", "목표 EC vs 실측 EC")
-    )
-
-    fig.add_bar(x=avg_df["학교"], y=avg_df["온도"], row=1, col=1)
-    fig.add_bar(x=avg_df["학교"], y=avg_df["습도"], row=1, col=2)
-    fig.add_bar(x=avg_df["학교"], y=avg_df["pH"], row=2, col=1)
-    fig.add_bar(x=avg_df["학교"], y=avg_df["EC"], name="실측 EC", row=2, col=2)
-    fig.add_bar(
-        x=list(EC_TARGET.keys()),
-        y=list(EC_TARGET.values()),
-        name="목표 EC",
-        row=2, col=2
-    )
-
-    fig.update_layout(
-        height=600,
-        font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif"),
-        showlegend=True
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.subheader("선택한 학교 시계열")
-
-    if school_option != "전체":
-        df = env_data[school_option]
-
-        fig_ts = make_subplots(rows=3, cols=1, shared_xaxes=True)
-
-        fig_ts.add_scatter(x=df["time"], y=df["temperature"], name="온도", row=1, col=1)
-        fig_ts.add_scatter(x=df["time"], y=df["humidity"], name="습도", row=2, col=1)
-        fig_ts.add_scatter(x=df["time"], y=df["ec"], name="EC", row=3, col=1)
-        fig_ts.add_hline(y=EC_TARGET[school_option], row=3, col=1)
-
-        fig_ts.update_layout(
-            height=600,
-            font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif")
-        )
-
-        st.plotly_chart(fig_ts, use_container_width=True)
-
-    with st.expander("환경 데이터 원본 보기 및 다운로드"):
-        all_env_sorted = all_env.sort_values("time")
-        st.dataframe(all_env_sorted, use_container_width=True)
-
-        csv_buffer = io.BytesIO()
-        all_env_sorted.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
-        csv_buffer.seek(0)
-
-        st.download_button(
-            data=csv_buffer,
-            file_name="환경데이터_전체.csv",
-            mime="text/csv"
-        )
-
-# ======================================================
-# Tab 3: 생육 결과
-# ======================================================
-with tab3:
-    all_growth = pd.concat(growth_data.values())
-
-    mean_weight = (
-        all_growth
-        .groupby("EC")["생중량(g)"]
-        .mean()
-        .reset_index()
-    )
-
-    best_ec = mean_weight.loc[
-        mean_weight["생중량(g)"].idxmax(), "EC"
-    ]
-
-    st.metric("🥇 최적 EC 평균 생중량", f"{best_ec} (최대)")
-
-    fig_metrics = make_subplots(
-        rows=2, cols=2,
-        subplot_titles=(
-            "평균 생중량",
-            "평균 잎 수",
-            "평균 지상부 길이",
-            "개체수"
-        )
-    )
-
-    for metric, r, c in [
-        ("생중량(g)", 1, 1),
-        ("잎 수(장)", 1, 2),
-        ("지상부 길이(mm)", 2, 1)
-    ]:
-        df_m = all_growth.groupby("EC")[metric].mean().reset_index()
-        fig_metrics.add_bar(x=df_m["EC"], y=df_m[metric], row=r, col=c)
-
-    count_df = all_growth.groupby("EC").size().reset_index(name="개체수")
-    fig_metrics.add_bar(x=count_df["EC"], y=count_df["개체수"], row=2, col=2)
-
-    fig_metrics.update_layout(
-        height=700,
-        font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif")
-    )
-
-    st.plotly_chart(fig_metrics, use_container_width=True)
-
-    fig_box = px.box(
-        all_growth,
-        x="학교",
-        y="생중량(g)",
-        color="학교",
-        color_discrete_map=SCHOOL_COLOR
-    )
-    fig_box.update_layout(
-        font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif")
-    )
-    st.plotly_chart(fig_box, use_container_width=True)
-
-    fig_scatter1 = px.scatter(
-        all_growth,
-        x="잎 수(장)",
-        y="생중량(g)",
-        color="학교"
-    )
-    fig_scatter2 = px.scatter(
-        all_growth,
-        x="지상부 길이(mm)",
-        y="생중량(g)",
-        color="학교"
-    )
-
-    for fig_s in [fig_scatter1, fig_scatter2]:
-        fig_s.update_layout(
-            font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif")
-        )
-        st.plotly_chart(fig_s, use_container_width=True)
-
-    with st.expander("생육 데이터 원본 및 다운로드"):
-        st.dataframe(all_growth, use_container_width=True)
-
-        buffer = io.BytesIO()
-        all_growth.to_excel(buffer, index=False, engine="openpyxl")
-        buffer.seek(0)
-
-        st.download_button(
-            data=buffer,
-            file_name="생육결과_전체.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+# ===============================
